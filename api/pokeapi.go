@@ -6,6 +6,8 @@ import (
 	"io"
 	"net/http"
 	"time"
+
+	"github.com/rt2013G/repl-pokedex/cache"
 )
 
 type LocationArea struct {
@@ -19,11 +21,13 @@ type LocationArea struct {
 }
 
 type HttpClient struct {
+	cache      cache.Cache
 	httpClient http.Client
 }
 
 func CreateHttpClient() HttpClient {
 	return HttpClient{
+		cache: cache.NewCache(time.Minute * 10),
 		httpClient: http.Client{
 			Timeout: time.Minute,
 		},
@@ -49,6 +53,22 @@ func (c *HttpClient) LocationAreaRequest(config *LocConfig, forward bool) (Locat
 			url = *config.prevLocationUrl
 		} else {
 			return LocationArea{}, fmt.Errorf("error. you are already on the first page")
+		}
+	}
+
+	val, ok := c.cache.Get(url)
+	if ok {
+		locationResponse := LocationArea{}
+		err := json.Unmarshal(val, &locationResponse)
+		if err != nil {
+			return LocationArea{}, err
+		}
+
+		config.nextLocationUrl = locationResponse.Next
+		config.prevLocationUrl = locationResponse.Previous
+
+		for _, loc := range locationResponse.Results {
+			fmt.Println(loc.Name)
 		}
 	}
 
@@ -84,6 +104,8 @@ func (c *HttpClient) LocationAreaRequest(config *LocConfig, forward bool) (Locat
 	for _, loc := range locationResponse.Results {
 		fmt.Println(loc.Name)
 	}
+
+	c.cache.Add(url, data)
 
 	return locationResponse, nil
 }
